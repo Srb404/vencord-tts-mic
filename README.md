@@ -9,6 +9,10 @@ Everything runs locally: speech is synthesised offline with [Piper](https://gith
 
 The UI (menu, commands, settings) is available in English (default) and Polish; switch it with the **Language** setting.
 
+<p align="center">
+  <img src="docs/voice-manager.png" alt="Voice manager: speech engine status and Polish and English voices with Sample, Use and Delete buttons" width="420">
+</p>
+
 ## How it works
 
 The desktop Discord client captures your microphone in its native voice engine, not through the browser's `getUserMedia`, so a plugin can't inject audio from inside the page. Instead, TtsMic creates a virtual microphone at the system level and you select it in Discord like any other input device:
@@ -30,6 +34,9 @@ Keeping Piper resident means only the first utterance pays the ~2 s model load; 
 ## Features
 
 - **TTS mode toggle** in the chat bar: while it's on (red icon), anything you send is spoken instead of posted.
+
+  ![Chat bar with the TTS microphone button next to the other chat buttons](docs/chat-bar.png)
+
 - **Right-click menu** on that button: voice, effect, tempo, volume, local monitoring, a local-only preview, stop, and the voice manager.
 - **Voice manager**: installs the speech engine, plays official samples, downloads (with progress and cancel) and deletes voices, all from inside Discord.
 - **Your real mic stays usable**: it is mixed into the virtual one, so you can talk and type in the same call (this can be turned off).
