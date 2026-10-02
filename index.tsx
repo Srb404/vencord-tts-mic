@@ -239,15 +239,14 @@ function registerCommands() {
     const { cmd, replies: r } = t();
     const voiceChoices = choices(VOICE_IDS, voiceLabel);
     const effectChoices = choices(EFFECT_IDS, effectLabel);
-    const { STRING } = ApplicationCommandOptionType;
 
     const list = [
         {
             ...cmd.say,
             options: [
-                { ...cmd.text, type: STRING, required: true },
-                { ...cmd.oneOffVoice, type: STRING, choices: voiceChoices },
-                { ...cmd.oneOffEffect, type: STRING, choices: effectChoices }
+                { ...cmd.text, type: ApplicationCommandOptionType.STRING, required: true },
+                { ...cmd.oneOffVoice, type: ApplicationCommandOptionType.STRING, choices: voiceChoices },
+                { ...cmd.oneOffEffect, type: ApplicationCommandOptionType.STRING, choices: effectChoices }
             ],
             execute: (args, { channel }) => {
                 say(findOption(args, cmd.text.name, ""), channel.guild_id,
@@ -256,7 +255,7 @@ function registerCommands() {
         },
         {
             ...cmd.voice,
-            options: [{ ...cmd.newVoice, type: STRING, choices: voiceChoices }],
+            options: [{ ...cmd.newVoice, type: ApplicationCommandOptionType.STRING, choices: voiceChoices }],
             execute: (args, { channel }) => {
                 const voice = findOption(args, cmd.newVoice.name, "");
                 if (voice) {
@@ -270,7 +269,7 @@ function registerCommands() {
         },
         {
             ...cmd.effect,
-            options: [{ ...cmd.newEffect, type: STRING, choices: effectChoices }],
+            options: [{ ...cmd.newEffect, type: ApplicationCommandOptionType.STRING, choices: effectChoices }],
             execute: (args, { channel }) => {
                 const effect = findOption(args, cmd.newEffect.name, "");
                 if (effect) {
