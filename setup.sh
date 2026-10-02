@@ -24,7 +24,7 @@ mkdir -p "$BASE/voices"
 
 [ -x "$BASE/venv/bin/piper" ] || {
     python3 -m venv "$BASE/venv"
-    "$BASE/venv/bin/pip" install -q piper-tts
+    "$BASE/venv/bin/pip" install -q "piper-tts==1.8.0"  # keep in sync with PIPER_PACKAGE in native.ts
 }
 
 for voice in "${voices[@]}"; do

@@ -9,7 +9,7 @@ import { IpcMainInvokeEvent } from "electron";
 import { once } from "events";
 import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "fs";
 import { homedir, tmpdir } from "os";
-import { join } from "path";
+import { delimiter, join } from "path";
 import { promisify } from "util";
 
 import { modelOf, VOICES } from "./voices";
@@ -22,6 +22,8 @@ const VOICES_DIR = join(BASE, "voices");
 const SAMPLES_DIR = join(BASE, "samples");
 const HF = "https://huggingface.co/rhasspy/piper-voices/resolve/main";
 const SAMPLES_URL = "https://rhasspy.github.io/piper-samples/samples";
+// pinned, so a future Piper release can't break installs for everyone at once
+const PIPER_PACKAGE = "piper-tts==1.8.0";
 const MIX_SINK = "vc_tts_mix";
 const MIC_SOURCE = "vc_tts_mic";
 
@@ -75,9 +77,9 @@ export async function setupMic(_: IpcMainInvokeEvent, mixRealMic: boolean, realM
 
     // pipewire-pulse splits on spaces unless the whole property list is single-quoted
     await pactl("load-module", "module-null-sink", `sink_name=${MIX_SINK}`,
-        "sink_properties='device.description=\"TTS-Mix (Vencord)\"'");
+        "sink_properties='device.description=\"TTS Mix (Vencord)\"'");
     await pactl("load-module", "module-remap-source", `master=${MIX_SINK}.monitor`, `source_name=${MIC_SOURCE}`,
-        "source_properties='device.description=\"Mikrofon TTS (Vencord)\"'");
+        "source_properties='device.description=\"TTS Microphone (Vencord)\"'");
 
     if (mixRealMic) {
         const source = realMic || await pactl("get-default-source");
@@ -142,6 +144,7 @@ function getPipeline(opts: VoiceOptions) {
     const effect = EFFECTS[opts.effect] ?? [];
     let sox: ChildProcessWithoutNullStreams | null = null;
     if (effect.length) {
+        if (!hasSox()) throw new Error("sox not found (needed for voice effects)");
         sox = spawn("sox", ["-q", "--buffer", "2048", ...rawFormat(rate), "-", ...rawFormat(rate), "-", ...effect]);
         sox.stdout.on("data", toPlayers);
         sox.stderr.on("data", () => { });
@@ -197,6 +200,7 @@ export async function preview(_: IpcMainInvokeEvent, text: string, opts: VoiceOp
     const effect = EFFECTS[opts.effect] ?? [];
     let file = wav;
     if (effect.length) {
+        if (!hasSox()) throw new Error("sox not found (needed for voice effects)");
         file = join(tmpdir(), "vc-tts-preview-fx.wav");
         await run("sox", [wav, file, ...effect]);
     }
@@ -245,9 +249,12 @@ async function fetchTo(url: string, dest: string, signal?: AbortSignal, onProgre
 const downloads = new Map<string, { progress: number; abort: AbortController; }>();
 let engineInstall: { running: boolean; error: string | null; } = { running: false, error: null };
 
+const hasSox = () => (process.env.PATH ?? "").split(delimiter).some(dir => dir && existsSync(join(dir, "sox")));
+
 export function getStatus() {
     return {
         engine: existsSync(PIPER),
+        sox: hasSox(),
         engineInstalling: engineInstall.running,
         engineError: engineInstall.error,
         installed: listVoices(),
@@ -315,7 +322,7 @@ export async function installEngine() {
     try {
         mkdirSync(BASE, { recursive: true });
         await run("python3", ["-m", "venv", join(BASE, "venv")]);
-        await run(join(BASE, "venv/bin/pip"), ["install", "-q", "piper-tts"], { maxBuffer: 16 * 1024 * 1024 });
+        await run(join(BASE, "venv/bin/pip"), ["install", "-q", PIPER_PACKAGE], { maxBuffer: 16 * 1024 * 1024 });
         engineInstall = { running: false, error: null };
     } catch (e: any) {
         engineInstall = { running: false, error: String(e?.stderr || e?.message || e).trim().split("\n").slice(-3).join("\n") };

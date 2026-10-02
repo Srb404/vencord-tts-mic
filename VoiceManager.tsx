@@ -121,6 +121,17 @@ function VoiceManager({ rootProps, ctx }: { rootProps: RenderModalProps; ctx: Ma
                     </Button>
                 )}
             </div>
+            {status && (
+                <div style={{ ...row, borderBottom: "none" }}>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ color: "var(--text-default)" }}>{m.sox}</div>
+                        {!status.sox && <div style={muted}>{m.soxMissing}</div>}
+                    </div>
+                    {status.sox
+                        ? <span style={{ color: "var(--text-positive)" }}>✓ {m.engineReady}</span>
+                        : <span style={{ color: "var(--text-warning)" }}>✗</span>}
+                </div>
+            )}
 
             {(["pl", "en"] as VoiceLang[]).map(l => (
                 <section key={l} style={{ marginTop: 16 }}>

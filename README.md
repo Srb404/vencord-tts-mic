@@ -4,7 +4,10 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that gives you a *
 
 Everything runs locally: speech is synthesised offline with [Piper](https://github.com/OHF-Voice/piper1-gpl), effects are applied with [SoX](https://sourceforge.net/projects/sox/), and audio is routed through [PipeWire](https://pipewire.org/). No text ever leaves your machine.
 
-> The UI (menu, commands, settings) is available in English (default) and Polish; switch it with the **Language** setting.
+> [!NOTE]
+> **Linux only.** TtsMic is written for Linux with PipeWire and has only been tested there (Arch Linux, official Discord client). The audio routing relies on `pactl` and `pw-play`, so it won't work on Windows or macOS.
+
+The UI (menu, commands, settings) is available in English (default) and Polish; switch it with the **Language** setting.
 
 ## How it works
 
@@ -16,7 +19,7 @@ typed text ─▶ piper ─▶ sox (effect) ─▶ pw-play ──┐
 real mic ──▶ module-loopback ──────────▶ null sink "vc_tts_mix"
                                                   │ monitor
                                                   ▼
-                        remap source "Mikrofon TTS (Vencord)" ─▶ Discord input
+                        remap source "TTS Microphone (Vencord)" ─▶ Discord input
 ```
 
 - **`native.ts`** runs in Discord's main (Node) process. It loads the PipeWire modules through `pactl`, keeps one Piper process alive (one stdin line = one utterance, raw PCM streamed out), and pipes the audio into the virtual sink. Optionally, a second `pw-play` lets you hear the output yourself.
@@ -94,10 +97,10 @@ Command names follow the UI language:
 ## Requirements
 
 - Linux with PipeWire and `pipewire-pulse` (provides `pactl` and `pw-play`)
-- `sox`
+- `sox` (only for voice effects; the voice manager shows whether it's found)
 - Python 3 (for Piper's venv)
 - Vencord [built from source](https://docs.vencord.dev/installing/) (userplugins require it)
-- The official Discord desktop client. Vesktop and the web client also capture through PipeWire, so the virtual mic should work there too, but this is untested.
+- The official Discord desktop client. Vesktop might work, but is untested. The web client is not supported, because the plugin needs native (Node) code.
 
 ## Installation
 
@@ -112,8 +115,8 @@ Then:
 
 1. **Fully restart Discord** (quit from the tray; a reload isn't enough, because `native.ts` runs in the main process).
 2. Enable **TtsMic** in Vencord's plugin settings and click **Manage voices** (also in the right-click menu of the chat bar button).
-3. Click **Install** next to the speech engine (a Python venv with `piper-tts`, about 200 MB), then listen to samples and download the voices you want.
-4. In Discord, go to *Voice & Video → Input Device* and select **Mikrofon TTS (Vencord)**.
+3. Click **Install** next to the speech engine (a Python venv with `piper-tts` 1.8.0, about 200 MB), then listen to samples and download the voices you want.
+4. In Discord, go to *Voice & Video → Input Device* and select **TTS Microphone (Vencord)**.
 
 Everything lives in `~/.local/share/vencord-tts`. If you prefer the terminal, `setup.sh` installs the engine, and `setup.sh pl en` also downloads every voice of those languages.
 
@@ -133,9 +136,13 @@ Everything lives in `~/.local/share/vencord-tts`. If you prefer the terminal, `s
 
 ## Troubleshooting
 
-- **The device isn't listed in Discord, or appears as plain "Mikrofon"**: restart Discord fully after updating, then pick the device again.
+- **The device isn't listed in Discord**: restart Discord fully after updating, then pick the device again.
 - **People can't hear the TTS**: with push-to-talk, speech only goes through while the key is held, so voice activity works better. Also check that Krisp or noise suppression isn't cutting it.
 - **Leftover virtual devices** (e.g. after a crash): run `pactl list short modules | grep vc_tts`, then `pactl unload-module <id>`. Disabling the plugin also removes them.
+
+## Disclaimer
+
+Client modifications are against Discord's Terms of Service. Vencord is used by many people without issues, but use it at your own risk. This is a third-party userplugin, not affiliated with or supported by Vencord or Discord.
 
 ## Credits
 
