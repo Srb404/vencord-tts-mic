@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Installs Piper into a venv and downloads the voices the plugin knows about.
-# Usage: ./setup.sh [pl] [en]   (no arguments = both languages)
+# Optional: the plugin's voice manager does the same from inside Discord.
+# Installs Piper into a venv and, if languages are given, downloads all their voices.
+# Usage: ./setup.sh [pl] [en]   (no arguments = engine only)
 set -euo pipefail
 
 BASE="$HOME/.local/share/vencord-tts"
@@ -10,11 +11,8 @@ PL_VOICES=(pl_PL-gosia-medium pl_PL-darkman-medium pl_PL-mc_speech-medium pl_PL-
 EN_VOICES=(en_US-lessac-high en_US-ryan-high en_US-amy-medium en_US-kristin-medium en_US-joe-medium
            en_GB-cori-high en_GB-alan-medium en_GB-northern_english_male-medium en_GB-semaine-medium)
 
-langs=("$@")
-[ ${#langs[@]} -eq 0 ] && langs=(pl en)
-
 voices=()
-for lang in "${langs[@]}"; do
+for lang in "$@"; do
     case "$lang" in
         pl) voices+=("${PL_VOICES[@]}") ;;
         en) voices+=("${EN_VOICES[@]}") ;;

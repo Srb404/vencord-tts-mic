@@ -13,7 +13,7 @@ export interface Voice {
     label: { en: string; pl: string; };
 }
 
-// keep in sync with setup.sh
+// keep in sync with setup.sh and MODEL_SIZE_MB
 export const VOICES: Voice[] = [
     { id: "pl_PL-gosia-medium", lang: "pl", label: { en: "Gosia (female)", pl: "Gosia (kobiecy)" } },
     { id: "pl_PL-darkman-medium", lang: "pl", label: { en: "Darkman (male)", pl: "Darkman (męski)" } },
@@ -34,6 +34,24 @@ export const VOICES: Voice[] = [
     { id: "en_GB-semaine-medium#1", lang: "en", label: { en: "Spike (male, British, aggressive)", pl: "Spike (męski, brytyjski, agresywny)" } },
     { id: "en_GB-semaine-medium#2", lang: "en", label: { en: "Obadiah (male, British, gloomy)", pl: "Obadiah (męski, brytyjski, ponury)" } }
 ];
+
+/** Download size of each model in MB (onnx + config), from rhasspy/piper-voices. */
+export const MODEL_SIZE_MB: Record<string, number> = {
+    "pl_PL-gosia-medium": 63,
+    "pl_PL-darkman-medium": 63,
+    "pl_PL-mc_speech-medium": 63,
+    "pl_PL-bass-high": 114,
+    "pl_PL-mls_6892-low": 63,
+    "en_US-lessac-high": 114,
+    "en_US-ryan-high": 121,
+    "en_US-amy-medium": 63,
+    "en_US-kristin-medium": 64,
+    "en_US-joe-medium": 63,
+    "en_GB-cori-high": 114,
+    "en_GB-alan-medium": 63,
+    "en_GB-northern_english_male-medium": 63,
+    "en_GB-semaine-medium": 77
+};
 
 export const DEFAULT_VOICE = "en_US-lessac-high";
 

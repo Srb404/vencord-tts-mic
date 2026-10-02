@@ -27,14 +27,15 @@ Keeping Piper resident means only the first utterance pays the ~2 s model load; 
 ## Features
 
 - **TTS mode toggle** in the chat bar: while it's on (red icon), anything you send is spoken instead of posted.
-- **Right-click menu** on that button: voice, effect, tempo, volume, local monitoring, a local-only preview, and stop.
+- **Right-click menu** on that button: voice, effect, tempo, volume, local monitoring, a local-only preview, stop, and the voice manager.
+- **Voice manager**: installs the speech engine, plays official samples, downloads (with progress and cancel) and deletes voices, all from inside Discord.
 - **Your real mic stays usable**: it is mixed into the virtual one, so you can talk and type in the same call (this can be turned off).
 - **17 voices** (5 Polish, 12 English) and **6 effects** (see below), switchable on the fly. Spoken fallbacks ("someone", "link"…) follow the voice's language.
 - **Message cleanup before speaking**: mentions are read as nicknames, custom emoji as their names, links as "link", and markdown is stripped.
 
 ### Voices
 
-17 voices: 5 Polish and 12 English (US and British). Use the **Voice languages** setting to show only the ones you need, and `setup.sh pl` or `setup.sh en` to download only one language. Voices that aren't downloaded are hidden automatically.
+17 voices: 5 Polish and 12 English (US and British), 60 to 120 MB each. Nothing is downloaded up front: open the **voice manager**, listen to the official samples and download only the voices you like. Voices that aren't downloaded are hidden everywhere else, and the **Voice languages** setting can hide a whole language.
 
 **Polish**
 
@@ -63,7 +64,7 @@ Keeping Piper resident means only the first utterance pays the ~2 s model load; 
 | Spike | male, British, aggressive | medium | same model, speaker 1 | CC BY-NC-SA 4.0 |
 | Obadiah | male, British, gloomy | medium | same model, speaker 2 | CC BY-NC-SA 4.0 |
 
-The voice models are **not** included in this repository. `setup.sh` downloads them from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices). Most of them were fine-tuned from the Lessac voice, whose dataset is licensed for non-commercial use only, and several have NC datasets of their own. This project is non-commercial: made by people, for people.
+The voice models are **not** included in this repository. The voice manager downloads them from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) and plays samples from [piper-samples](https://rhasspy.github.io/piper-samples/). Most of them were fine-tuned from the Lessac voice, whose dataset is licensed for non-commercial use only, and several have NC datasets of their own. This project is non-commercial: made by people, for people.
 
 ### Effects
 
@@ -102,19 +103,19 @@ Command names follow the UI language:
 
 ```sh
 git clone https://github.com/Srb404/vencord-tts-mic /path/to/Vencord/src/userplugins/ttsMic
-/path/to/Vencord/src/userplugins/ttsMic/setup.sh   # all voices; or: setup.sh pl / setup.sh en
 cd /path/to/Vencord && pnpm build && pnpm inject   # inject only on first install
 ```
-
-`setup.sh` creates a venv with `piper-tts` and downloads the voices into `~/.local/share/vencord-tts` (60 to 115 MB per model: about 350 MB for Polish, 700 MB for English). Run it again with the other language at any time to add it.
 
 The plugin must physically live in `src/userplugins`. A symlink won't work, because esbuild resolves it to the real path, where Vencord's `@api/...` import aliases don't apply.
 
 Then:
 
 1. **Fully restart Discord** (quit from the tray; a reload isn't enough, because `native.ts` runs in the main process).
-2. Enable **TtsMic** in Vencord's plugin settings.
-3. In Discord, go to *Voice & Video → Input Device* and select **Mikrofon TTS (Vencord)**.
+2. Enable **TtsMic** in Vencord's plugin settings and click **Manage voices** (also in the right-click menu of the chat bar button).
+3. Click **Install** next to the speech engine (a Python venv with `piper-tts`, about 200 MB), then listen to samples and download the voices you want.
+4. In Discord, go to *Voice & Video → Input Device* and select **Mikrofon TTS (Vencord)**.
+
+Everything lives in `~/.local/share/vencord-tts`. If you prefer the terminal, `setup.sh` installs the engine, and `setup.sh pl en` also downloads every voice of those languages.
 
 ## Settings
 

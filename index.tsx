@@ -7,11 +7,13 @@
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, registerCommand, sendBotMessage, unregisterCommand } from "@api/Commands";
 import { definePluginSettings } from "@api/Settings";
+import { Button } from "@components/Button";
 import definePlugin, { IconComponent, makeRange, OptionType, PluginNative } from "@utils/types";
-import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, UserStore, useState } from "@webpack/common";
+import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, showToast, Toasts, UserStore, useState } from "@webpack/common";
 
 import { EFFECT_IDS, Lang, STRINGS } from "./i18n";
-import { DEFAULT_VOICE, modelOf, SPOKEN, VoiceLang,VOICES } from "./voices";
+import { openVoiceManager } from "./VoiceManager";
+import { DEFAULT_VOICE, modelOf, SPOKEN, VoiceLang, VOICES } from "./voices";
 
 const Native = VencordNative.pluginHelpers.TtsMic as PluginNative<typeof import("./native")>;
 
@@ -126,8 +128,25 @@ const settings = definePluginSettings({
         get description() { return t().settings.realMic; },
         default: "",
         onChange: remountMic
+    },
+    voiceManager: {
+        type: OptionType.COMPONENT,
+        component: () => <Button onClick={openManager}>{t().manager.openButton}</Button>
     }
 });
+
+function openManager() {
+    openVoiceManager({
+        strings: t,
+        lang,
+        currentVoice: () => settings.store.voice,
+        setVoice: id => settings.store.voice = id,
+        volume: () => settings.store.volume,
+        onChanged: () => refreshInstalled().then(ensureVisibleVoice)
+    });
+}
+
+const hasVoices = () => !installed || installed.size > 0;
 
 const voiceOpts = () => ({
     voice: settings.store.voice,
@@ -160,6 +179,7 @@ async function say(text: string, guildId?: string | null, voice?: string, effect
         await Native.speak(toSpeech(text, words, guildId), opts);
     } catch (e) {
         console.error("[TtsMic] speak", e);
+        showToast(`${t().manager.error}: ${(e as Error)?.message ?? e}`, Toasts.Type.FAILURE);
     }
 }
 
@@ -246,6 +266,8 @@ function TtsMenu() {
                 color="danger"
                 action={() => Native.stopSpeaking()}
             />
+            <Menu.MenuSeparator />
+            <Menu.MenuItem id="vc-tts-manage" label={m.manage} action={openManager} />
         </Menu.Menu>
     );
 }
@@ -264,6 +286,10 @@ const TtsToggle: ChatBarButtonFactory = ({ isMainChat }) => {
         <ChatBarButton
             tooltip={enabled ? t().tooltipOn : t().tooltipOff}
             onClick={() => {
+                if (!enabled && !hasVoices()) {
+                    showToast(t().manager.noVoice, Toasts.Type.MESSAGE);
+                    return openManager();
+                }
                 ttsMode = !enabled;
                 setEnabled(ttsMode);
                 if (ttsMode) warmup();
