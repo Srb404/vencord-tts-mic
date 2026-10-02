@@ -384,7 +384,7 @@ function registerCommands() {
 export default definePlugin({
     name: "TtsMic",
     description: "Virtual microphone that speaks what you type with a neural voice, Polish or English (Piper). In Discord, pick the input device \"TTS Microphone (Vencord)\".",
-    authors: [{ name: "srb", id: 0n }],
+    authors: [{ name: "Srb404", id: 256522090134372362n }],
     settings,
 
     start() {
