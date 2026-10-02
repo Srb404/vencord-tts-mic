@@ -10,7 +10,8 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { IconComponent, makeRange, OptionType, PluginNative } from "@utils/types";
 import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, UserStore, useState } from "@webpack/common";
 
-import { EFFECT_IDS, Lang, STRINGS, VOICE_IDS } from "./i18n";
+import { EFFECT_IDS, Lang, STRINGS } from "./i18n";
+import { DEFAULT_VOICE, modelOf, SPOKEN, VoiceLang,VOICES } from "./voices";
 
 const Native = VencordNative.pluginHelpers.TtsMic as PluginNative<typeof import("./native")>;
 
@@ -23,7 +24,35 @@ const t = () => {
     }
 };
 
-const voiceLabel = (id: string) => t().voices[id] ?? id;
+const lang = (): Lang => t() === STRINGS.pl ? "pl" : "en";
+
+const voiceOf = (id: string) => VOICES.find(v => v.id === id);
+const voiceLabel = (id: string) => voiceOf(id)?.label[lang()] ?? id;
+
+/** Model names present in ~/.local/share/vencord-tts/voices; null until the first scan. */
+let installed: Set<string> | null = null;
+
+const refreshInstalled = () => Native.listVoices()
+    .then(models => {
+        installed = new Set(models);
+        registerCommands();
+    })
+    .catch(e => console.error("[TtsMic] listVoices", e));
+
+/** Voices allowed by the language filter and actually downloaded. */
+function visibleVoices() {
+    let filter = "all";
+    try { filter = settings.store.voiceLanguages; } catch { }
+    return VOICES.filter(v =>
+        (filter === "all" || v.lang === filter) && (!installed || installed.has(modelOf(v.id))));
+}
+
+/** After hiding a language, move off a voice that is no longer listed. */
+function ensureVisibleVoice() {
+    const visible = visibleVoices();
+    if (visible.length && !visible.some(v => v.id === settings.store.voice))
+        settings.store.voice = visible[0].id;
+}
 const effectLabel = (id: string) => t().effects[id] ?? id;
 
 const choices = (ids: readonly string[], label: (id: string) => string) =>
@@ -42,10 +71,24 @@ const settings = definePluginSettings({
         ],
         onChange: () => registerCommands()
     },
+    voiceLanguages: {
+        type: OptionType.SELECT,
+        get description() { return t().settings.voiceLanguages; },
+        options: (["all", "pl", "en"] as const).map((value, i) => ({
+            get label() { return t().voiceLanguages[value]; }, value, default: i === 0
+        })),
+        onChange: () => {
+            ensureVisibleVoice();
+            registerCommands();
+        }
+    },
     voice: {
         type: OptionType.SELECT,
         get description() { return t().settings.voice; },
-        options: VOICE_IDS.map((value, i) => ({ get label() { return voiceLabel(value); }, value, default: i === 0 })),
+        // getter, so the dropdown follows the language filter and what's installed
+        get options() {
+            return visibleVoices().map(v => ({ label: voiceLabel(v.id), value: v.id, default: v.id === DEFAULT_VOICE }));
+        },
         onChange: () => warmup()
     },
     effect: {
@@ -97,22 +140,24 @@ const voiceOpts = () => ({
 const warmup = () => Native.warmup(voiceOpts()).catch(e => console.error("[TtsMic] warmup", e));
 
 /** Raw message markup -> something a voice can read. */
-function toSpeech(content: string, guildId?: string | null) {
+function toSpeech(content: string, words: typeof SPOKEN[VoiceLang], guildId?: string | null) {
     return content
         .replace(/<a?:(\w+):\d+>/g, "$1")
         .replace(/<@!?(\d+)>/g, (_, id) => {
             const user = UserStore.getUser(id);
-            return (guildId && GuildMemberStore.getNick(guildId, id)) || user?.globalName || user?.username || "ktoś";
+            return (guildId && GuildMemberStore.getNick(guildId, id)) || user?.globalName || user?.username || words.someone;
         })
-        .replace(/<#(\d+)>/g, (_, id) => ChannelStore.getChannel(id)?.name ?? "kanał")
-        .replace(/<@&\d+>/g, "rola")
-        .replace(/https?:\/\/\S+/g, "link")
+        .replace(/<#(\d+)>/g, (_, id) => ChannelStore.getChannel(id)?.name ?? words.channel)
+        .replace(/<@&\d+>/g, words.role)
+        .replace(/https?:\/\/\S+/g, words.link)
         .replace(/[*_~`|>]/g, "");
 }
 
 async function say(text: string, guildId?: string | null, voice?: string, effect?: string) {
+    const opts = { ...voiceOpts(), ...(voice && { voice }), ...(effect && { effect }) };
+    const words = SPOKEN[voiceOf(opts.voice)?.lang ?? "en"];
     try {
-        await Native.speak(toSpeech(text, guildId), { ...voiceOpts(), ...(voice && { voice }), ...(effect && { effect }) });
+        await Native.speak(toSpeech(text, words, guildId), opts);
     } catch (e) {
         console.error("[TtsMic] speak", e);
     }
@@ -120,10 +165,8 @@ async function say(text: string, guildId?: string | null, voice?: string, effect
 
 let ttsMode = false;
 
-const SAMPLE = "Cześć, tak brzmi ten głos. Zażółć gęślą jaźń.";
-
 function TtsMenu() {
-    const s = settings.use(["voice", "effect", "lengthScale", "volume", "monitor", "language"]);
+    const s = settings.use(["voice", "effect", "lengthScale", "volume", "monitor", "language", "voiceLanguages"]);
     const m = t().menu;
 
     const slider = (id: string, label: string, key: "lengthScale" | "volume", min: number, max: number) => (
@@ -149,19 +192,25 @@ function TtsMenu() {
             onClose={() => FluxDispatcher.dispatch({ type: "CONTEXT_MENU_CLOSE" })}
             aria-label={m.title}
         >
-            <Menu.MenuGroup label={m.voice}>
-                {VOICE_IDS.map(value => (
-                    <Menu.MenuRadioItem
-                        key={value}
-                        id={`vc-tts-voice-${value}`}
-                        group="vc-tts-voice"
-                        label={voiceLabel(value)}
-                        checked={s.voice === value}
-                        action={() => settings.store.voice = value}
-                    />
-                ))}
-            </Menu.MenuGroup>
-            <Menu.MenuSeparator />
+            <Menu.MenuItem id="vc-tts-voices" label={`${m.voice}: ${voiceLabel(s.voice)}`}>
+                {(["pl", "en"] as const).map(l => {
+                    const voices = visibleVoices().filter(v => v.lang === l);
+                    return voices.length > 0 && (
+                        <Menu.MenuGroup key={l} label={m.langNames[l]}>
+                            {voices.map(({ id }) => (
+                                <Menu.MenuRadioItem
+                                    key={id}
+                                    id={`vc-tts-voice-${id}`}
+                                    group="vc-tts-voice"
+                                    label={voiceLabel(id)}
+                                    checked={s.voice === id}
+                                    action={() => settings.store.voice = id}
+                                />
+                            ))}
+                        </Menu.MenuGroup>
+                    );
+                })}
+            </Menu.MenuItem>
             <Menu.MenuItem id="vc-tts-effects" label={`${m.effect}: ${effectLabel(s.effect)}`}>
                 {EFFECT_IDS.map(value => (
                     <Menu.MenuRadioItem
@@ -189,7 +238,7 @@ function TtsMenu() {
             <Menu.MenuItem
                 id="vc-tts-preview"
                 label={m.preview}
-                action={() => Native.preview(SAMPLE, voiceOpts()).catch(e => console.error("[TtsMic] preview", e))}
+                action={() => Native.preview(SPOKEN[voiceOf(s.voice)?.lang ?? "en"].sample, voiceOpts()).catch(e => console.error("[TtsMic] preview", e))}
             />
             <Menu.MenuItem
                 id="vc-tts-stop"
@@ -237,7 +286,7 @@ function unregisterCommands() {
 function registerCommands() {
     unregisterCommands();
     const { cmd, replies: r } = t();
-    const voiceChoices = choices(VOICE_IDS, voiceLabel);
+    const voiceChoices = choices(visibleVoices().map(v => v.id), voiceLabel);
     const effectChoices = choices(EFFECT_IDS, effectLabel);
 
     const list = [
@@ -263,7 +312,7 @@ function registerCommands() {
                     warmup();
                 }
                 sendBotMessage(channel.id, {
-                    content: `${voice ? r.voiceSet : r.voiceCurrent}: **${voiceLabel(settings.store.voice)}**\n${r.available}: ${VOICE_IDS.map(voiceLabel).join(", ")}`
+                    content: `${voice ? r.voiceSet : r.voiceCurrent}: **${voiceLabel(settings.store.voice)}**\n${r.available}: ${visibleVoices().map(v => voiceLabel(v.id)).join(", ")}`
                 });
             }
         },
@@ -308,13 +357,14 @@ function registerCommands() {
 
 export default definePlugin({
     name: "TtsMic",
-    description: "Virtual microphone that speaks what you type with a Polish neural voice (Piper). In Discord, pick the input device \"Mikrofon TTS (Vencord)\".",
+    description: "Virtual microphone that speaks what you type with a neural voice, Polish or English (Piper). In Discord, pick the input device \"Mikrofon TTS (Vencord)\".",
     authors: [{ name: "srb", id: 0n }],
     settings,
 
     start() {
         remountMic();
         registerCommands();
+        refreshInstalled();
     },
 
     stop() {

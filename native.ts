@@ -6,7 +6,7 @@
 
 import { ChildProcessWithoutNullStreams, execFile, spawn } from "child_process";
 import { IpcMainInvokeEvent } from "electron";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
@@ -99,11 +99,19 @@ function player(target: string | null, volume: number, rate: number) {
     return spawn("pw-play", args);
 }
 
-function modelPath(voice: string) {
-    const model = join(BASE, "voices", `${voice}.onnx`);
-    if (!existsSync(PIPER)) throw new Error(`Brak piper: ${PIPER}`);
-    if (!existsSync(model)) throw new Error(`Brak głosu: ${model}`);
-    return model;
+/** Voice id = model name, optionally `#<speaker id>` for multi-speaker models. */
+function piperArgs(voice: string) {
+    const [name, speaker] = voice.split("#");
+    const model = join(BASE, "voices", `${name}.onnx`);
+    if (!existsSync(PIPER)) throw new Error(`piper not found: ${PIPER} (run setup.sh)`);
+    if (!existsSync(model)) throw new Error(`voice not installed: ${model} (run setup.sh)`);
+    return { model, args: ["-m", model, ...(speaker ? ["--speaker", speaker] : [])] };
+}
+
+export function listVoices() {
+    const dir = join(BASE, "voices");
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter(f => f.endsWith(".onnx")).map(f => f.slice(0, -".onnx".length));
 }
 
 /** Long-lived piper process: one line of stdin = one utterance, raw PCM streamed straight into pw-play. */
@@ -112,12 +120,12 @@ function getPipeline(opts: VoiceOptions) {
     if (pipeline?.key === key && pipeline.piper.exitCode === null) return pipeline;
     killPipeline();
 
-    const model = modelPath(opts.voice);
+    const { model, args } = piperArgs(opts.voice);
 
     // voices differ in sample rate (mls is 16 kHz, the rest 22.05 kHz)
     const rate: number = JSON.parse(readFileSync(model + ".json", "utf8")).audio.sample_rate;
 
-    const piper = spawn(PIPER, ["-m", model, "--output-raw", "--length-scale", String(opts.lengthScale)]);
+    const piper = spawn(PIPER, [...args, "--output-raw", "--length-scale", String(opts.lengthScale)]);
     const players = [player(MIX_SINK, opts.volume, rate)];
     if (opts.monitor) players.push(player(null, opts.volume, rate));
 
@@ -174,7 +182,7 @@ let previewPlayer: ChildProcessWithoutNullStreams | null = null;
 export async function preview(_: IpcMainInvokeEvent, text: string, opts: VoiceOptions) {
     const wav = join(tmpdir(), "vc-tts-preview.wav");
     await new Promise<void>((resolve, reject) => {
-        const p = spawn(PIPER, ["-m", modelPath(opts.voice), "-f", wav, "--length-scale", String(opts.lengthScale)]);
+        const p = spawn(PIPER, [...piperArgs(opts.voice).args, "-f", wav, "--length-scale", String(opts.lengthScale)]);
         p.on("error", reject);
         p.on("close", code => code === 0 ? resolve() : reject(new Error(`piper: ${code}`)));
         p.stdin.end(text);

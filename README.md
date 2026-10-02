@@ -1,6 +1,6 @@
 # vencord-tts-mic
 
-A [Vencord](https://github.com/Vendicated/Vencord) userplugin that gives you a **text-to-speech microphone** in Discord: type a message, and it's spoken in your voice channel by a neural Polish voice instead of being posted in chat.
+A [Vencord](https://github.com/Vendicated/Vencord) userplugin that gives you a **text-to-speech microphone** in Discord: type a message, and it's spoken in your voice channel by a neural voice (Polish or English) instead of being posted in chat.
 
 Everything runs locally: speech is synthesised offline with [Piper](https://github.com/OHF-Voice/piper1-gpl), effects are applied with [SoX](https://sourceforge.net/projects/sox/), and audio is routed through [PipeWire](https://pipewire.org/). No text ever leaves your machine.
 
@@ -29,12 +29,16 @@ Keeping Piper resident means only the first utterance pays the ~2 s model load; 
 - **TTS mode toggle** in the chat bar: while it's on (red icon), anything you send is spoken instead of posted.
 - **Right-click menu** on that button: voice, effect, tempo, volume, local monitoring, a local-only preview, and stop.
 - **Your real mic stays usable**: it is mixed into the virtual one, so you can talk and type in the same call (this can be turned off).
-- **5 Polish voices** and **6 effects** (see below), switchable on the fly.
+- **17 voices** (5 Polish, 12 English) and **6 effects** (see below), switchable on the fly. Spoken fallbacks ("someone", "link"…) follow the voice's language.
 - **Message cleanup before speaking**: mentions are read as nicknames, custom emoji as their names, links as "link", and markdown is stripped.
 
 ### Voices
 
-| Voice | Character | Quality | Model card | Dataset license |
+17 voices: 5 Polish and 12 English (US and British). Use the **Voice languages** setting to show only the ones you need, and `setup.sh pl` or `setup.sh en` to download only one language. Voices that aren't downloaded are hidden automatically.
+
+**Polish**
+
+| Voice | Character | Quality | Model | Dataset license |
 |---|---|---|---|---|
 | Gosia | female | medium | [pl_PL-gosia-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/pl/pl_PL/gosia/medium) | CC0 |
 | Darkman | male | medium | [pl_PL-darkman-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/pl/pl_PL/darkman/medium) | CC0 |
@@ -42,7 +46,24 @@ Keeping Piper resident means only the first utterance pays the ~2 s model load; 
 | Bass | male, deep | high | [pl_PL-bass-high](https://huggingface.co/rhasspy/piper-voices/tree/main/pl/pl_PL/bass/high) ([samples](https://huggingface.co/blackbartblues/piper-pl-bass-high)) | Apache 2.0 |
 | MLS | male | low (16 kHz) | [pl_PL-mls_6892-low](https://huggingface.co/rhasspy/piper-voices/tree/main/pl/pl_PL/mls_6892/low) | CC BY 4.0 ([MLS](http://www.openslr.org/94/)) |
 
-The voice models are **not** included in this repository. `setup.sh` downloads them from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices). Each voice was fine-tuned from an English Piper base voice, so check its model card before any use beyond personal use.
+**English**
+
+| Voice | Character | Quality | Model | Dataset license |
+|---|---|---|---|---|
+| Lessac | female, US | high | [en_US-lessac-high](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/high) | [Blizzard 2013 license](https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html) (non-commercial) |
+| Ryan | male, US | high | [en_US-ryan-high](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/ryan/high) | CC BY-NC-SA 4.0 ([RyanSpeech](https://www.kaggle.com/datasets/roholazandie/ryanspeech)) |
+| Amy | female, US | medium | [en_US-amy-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/amy/medium) | see [mimic3-voices](https://github.com/MycroftAI/mimic3-voices) |
+| Kristin | female, US | medium | [en_US-kristin-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/kristin/medium) | public domain ([LibriVox](https://librivox.org)) |
+| Joe | male, US | medium | [en_US-joe-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/joe/medium) | CC0 |
+| Cori | female, British | high | [en_GB-cori-high](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/cori/high) | public domain ([LibriVox](https://librivox.org)) |
+| Alan | male, British | medium | [en_GB-alan-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/alan/medium) | see [mimic3-voices](https://github.com/MycroftAI/mimic3-voices) |
+| Northern English | male, British | medium | [en_GB-northern_english_male-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/northern_english_male/medium) | CC BY-SA 4.0 ([OpenSLR 83](http://www.openslr.org/83/)) |
+| Prudence | female, British, pragmatic | medium | [en_GB-semaine-medium](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/semaine/medium) (speaker 0) | CC BY-NC-SA 4.0 ([SEMAINE](https://github.com/marytts/dfki-semaine-data)) |
+| Poppy | female, British, cheerful | medium | same model, speaker 3 | CC BY-NC-SA 4.0 |
+| Spike | male, British, aggressive | medium | same model, speaker 1 | CC BY-NC-SA 4.0 |
+| Obadiah | male, British, gloomy | medium | same model, speaker 2 | CC BY-NC-SA 4.0 |
+
+The voice models are **not** included in this repository. `setup.sh` downloads them from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices). Most of them were fine-tuned from the Lessac voice, whose dataset is licensed for non-commercial use only, and several have NC datasets of their own. This project is non-commercial: made by people, for people.
 
 ### Effects
 
@@ -81,11 +102,11 @@ Command names follow the UI language:
 
 ```sh
 git clone https://github.com/Srb404/vencord-tts-mic /path/to/Vencord/src/userplugins/ttsMic
-/path/to/Vencord/src/userplugins/ttsMic/setup.sh
+/path/to/Vencord/src/userplugins/ttsMic/setup.sh   # all voices; or: setup.sh pl / setup.sh en
 cd /path/to/Vencord && pnpm build && pnpm inject   # inject only on first install
 ```
 
-`setup.sh` creates a venv with `piper-tts` and downloads the voices into `~/.local/share/vencord-tts`.
+`setup.sh` creates a venv with `piper-tts` and downloads the voices into `~/.local/share/vencord-tts` (60 to 115 MB per model: about 350 MB for Polish, 700 MB for English). Run it again with the other language at any time to add it.
 
 The plugin must physically live in `src/userplugins`. A symlink won't work, because esbuild resolves it to the real path, where Vencord's `@api/...` import aliases don't apply.
 
@@ -100,7 +121,8 @@ Then:
 | Setting | Default | Notes |
 |---|---|---|
 | Language | English | UI language: menu, commands, setting descriptions (English or Polish) |
-| Voice | Gosia | Same as `/tts-voice` |
+| Voice languages | All | Show Polish voices, English voices or both |
+| Voice | Lessac | Same as `/tts-voice` |
 | Effect | none | Same as `/tts-effect` |
 | Tempo | 1.0 | Piper's `length_scale`: lower is faster |
 | Volume | 0.8 | Above 1 may clip |
@@ -124,4 +146,4 @@ Then:
 
 ## License
 
-[GPL-3.0-or-later](LICENSE), like Vencord, which this plugin is built against. The voice models are distributed separately under their own licenses.
+The code is [GPL-3.0-or-later](LICENSE), like Vencord, which this plugin is built against. The voice models are distributed separately under their own licenses (several of them non-commercial, see [Voices](#voices)). This is a non-commercial project.

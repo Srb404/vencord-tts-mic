@@ -6,24 +6,9 @@
 
 export type Lang = "en" | "pl";
 
-export const VOICE_IDS = [
-    "pl_PL-gosia-medium",
-    "pl_PL-darkman-medium",
-    "pl_PL-mc_speech-medium",
-    "pl_PL-bass-high",
-    "pl_PL-mls_6892-low"
-] as const;
-
 export const EFFECT_IDS = ["none", "chipmunk", "demon", "robot", "cathedral", "drunk", "phone"] as const;
 
 const en = {
-    voices: {
-        "pl_PL-gosia-medium": "Gosia (female)",
-        "pl_PL-darkman-medium": "Darkman (male)",
-        "pl_PL-mc_speech-medium": "MC Speech (male)",
-        "pl_PL-bass-high": "Bass (male, deep, high quality)",
-        "pl_PL-mls_6892-low": "MLS (male, low quality)"
-    },
     effects: {
         none: "No effect",
         chipmunk: "Chipmunk",
@@ -36,6 +21,7 @@ const en = {
 
     settings: {
         voice: "Voice (Piper, offline)",
+        voiceLanguages: "Voice languages to show (in the menu, commands and here)",
         effect: "Voice effect",
         lengthScale: "Tempo: lower = faster",
         volume: "Speech volume",
@@ -50,11 +36,13 @@ const en = {
         effect: "Effect",
         tempo: "Tempo",
         tempoHint: "lower = faster",
+        langNames: { pl: "Polish", en: "English" },
         volume: "Volume",
         monitor: "Hear TTS locally",
         preview: "Preview sample (only you hear it)",
         stop: "Stop speaking"
     },
+    voiceLanguages: { all: "All", pl: "Polish only", en: "English only" },
     tooltipOn: "TTS mode: messages go to the microphone (right-click: voice and options)",
     tooltipOff: "Enable TTS mode (right-click: voice and options)",
 
@@ -85,13 +73,6 @@ const en = {
 export type Strings = typeof en;
 
 const pl: Strings = {
-    voices: {
-        "pl_PL-gosia-medium": "Gosia (kobiecy)",
-        "pl_PL-darkman-medium": "Darkman (męski)",
-        "pl_PL-mc_speech-medium": "MC Speech (męski)",
-        "pl_PL-bass-high": "Bass (męski, niski, wysoka jakość)",
-        "pl_PL-mls_6892-low": "MLS (męski, niska jakość)"
-    },
     effects: {
         none: "Bez efektu",
         chipmunk: "Wiewiórka",
@@ -104,6 +85,7 @@ const pl: Strings = {
 
     settings: {
         voice: "Głos (Piper, offline)",
+        voiceLanguages: "Języki głosów do pokazania (w menu, komendach i tutaj)",
         effect: "Efekt głosu",
         lengthScale: "Tempo: mniej = szybciej",
         volume: "Głośność syntezy",
@@ -118,11 +100,13 @@ const pl: Strings = {
         effect: "Efekt",
         tempo: "Tempo",
         tempoHint: "mniej = szybciej",
+        langNames: { pl: "Polskie", en: "Angielskie" },
         volume: "Głośność",
         monitor: "Słyszę TTS u siebie",
         preview: "Odsłuchaj próbkę (tylko u siebie)",
         stop: "Przerwij czytanie"
     },
+    voiceLanguages: { all: "Wszystkie", pl: "Tylko polskie", en: "Tylko angielskie" },
     tooltipOn: "Tryb TTS: wiadomości idą na mikrofon (PPM: głos i opcje)",
     tooltipOff: "Włącz tryb TTS (PPM: głos i opcje)",
 
