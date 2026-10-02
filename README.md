@@ -4,7 +4,7 @@ A [Vencord](https://github.com/Vendicated/Vencord) userplugin that gives you a *
 
 Everything runs locally: speech is synthesised offline with [Piper](https://github.com/OHF-Voice/piper1-gpl), effects are applied with [SoX](https://sourceforge.net/projects/sox/), and audio is routed through [PipeWire](https://pipewire.org/). No text ever leaves your machine.
 
-> The plugin's UI (menu, commands, settings) is in Polish, since it's built around Polish voices.
+> The UI (menu, commands, settings) is available in English (default) and Polish; switch it with the **Language** setting.
 
 ## How it works
 
@@ -48,24 +48,26 @@ The voice models are **not** included in this repository. `setup.sh` downloads t
 
 | Effect | SoX chain |
 |---|---|
-| Wiewiórka (chipmunk) | `pitch 800 tempo 1.1` |
+| Chipmunk | `pitch 800 tempo 1.1` |
 | Demon | `pitch -700 reverb 30` |
 | Robot | `synth sine amod 40` (ring modulation) |
-| Katedra (cathedral) | `reverb 90 50 100 100 20` |
-| Pijany (drunk) | `tempo 0.85 chorus 0.6 0.9 50 0.4 0.25 2 -s` |
-| Telefon (phone) | `highpass 400 lowpass 3200 overdrive 4` |
+| Cathedral | `reverb 90 50 100 100 20` |
+| Drunk | `tempo 0.85 chorus 0.6 0.9 50 0.4 0.25 2 -s` |
+| Phone | `highpass 400 lowpass 3200 overdrive 4` |
 
 SoX keeps the tail of a stream in its buffers until more input arrives. To flush it, the plugin pushes 0.6 s of silence after each utterance, which also lets reverb tails ring out.
 
 ### Commands
 
-| Command | What it does |
-|---|---|
-| `/powiedz tekst [glos] [efekt]` | Speak a text, optionally with a one-off voice or effect |
-| `/glos [glos]` | Set the voice; with no argument, show the current one |
-| `/efekt [efekt]` | Set the effect; with no argument, show the current one |
-| `/tempo wartosc` | Set the tempo, 0.5 to 2 (lower is faster) |
-| `/cisza` | Stop speaking and clear the queue |
+Command names follow the UI language:
+
+| English | Polish | What it does |
+|---|---|---|
+| `/say text [voice] [effect]` | `/powiedz tekst [glos] [efekt]` | Speak a text, optionally with a one-off voice or effect |
+| `/tts-voice [voice]` | `/glos [glos]` | Set the voice; with no argument, show the current one |
+| `/tts-effect [effect]` | `/efekt [efekt]` | Set the effect; with no argument, show the current one |
+| `/tts-tempo value` | `/tempo wartosc` | Set the tempo, 0.5 to 2 (lower is faster) |
+| `/tts-stop` | `/cisza` | Stop speaking and clear the queue |
 
 ## Requirements
 
@@ -97,8 +99,9 @@ Then:
 
 | Setting | Default | Notes |
 |---|---|---|
-| Voice | Gosia | Same as `/glos` |
-| Effect | none | Same as `/efekt` |
+| Language | English | UI language: menu, commands, setting descriptions (English or Polish) |
+| Voice | Gosia | Same as `/tts-voice` |
+| Effect | none | Same as `/tts-effect` |
 | Tempo | 1.0 | Piper's `length_scale`: lower is faster |
 | Volume | 0.8 | Above 1 may clip |
 | Monitor | on | Also play the speech on your default output |

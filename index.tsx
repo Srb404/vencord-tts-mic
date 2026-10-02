@@ -1,85 +1,86 @@
 /*
  * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
-import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, sendBotMessage } from "@api/Commands";
+import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, registerCommand, sendBotMessage, unregisterCommand } from "@api/Commands";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { IconComponent, makeRange, OptionType, PluginNative } from "@utils/types";
 import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, UserStore, useState } from "@webpack/common";
 
+import { EFFECT_IDS, Lang, STRINGS, VOICE_IDS } from "./i18n";
+
 const Native = VencordNative.pluginHelpers.TtsMic as PluginNative<typeof import("./native")>;
 
-const VOICES = [
-    ["pl_PL-gosia-medium", "Gosia (kobiecy)"],
-    ["pl_PL-darkman-medium", "Darkman (męski)"],
-    ["pl_PL-mc_speech-medium", "MC Speech (męski)"],
-    ["pl_PL-bass-high", "Bass (męski, niski, wysoka jakość)"],
-    ["pl_PL-mls_6892-low", "MLS (męski, niska jakość)"]
-] as const;
+/** Current UI strings; also usable before the plugin starts (settings page), hence the fallback. */
+const t = () => {
+    try {
+        return STRINGS[settings.store.language as Lang] ?? STRINGS.en;
+    } catch {
+        return STRINGS.en;
+    }
+};
 
-const EFFECTS = [
-    ["none", "Bez efektu"],
-    ["chipmunk", "Wiewiórka"],
-    ["demon", "Demon"],
-    ["robot", "Robot"],
-    ["cathedral", "Katedra (echo)"],
-    ["drunk", "Pijany"],
-    ["phone", "Telefon"]
-] as const;
+const voiceLabel = (id: string) => t().voices[id] ?? id;
+const effectLabel = (id: string) => t().effects[id] ?? id;
 
-const effectLabel = (id: string) => EFFECTS.find(([v]) => v === id)?.[1] ?? id;
-
-const effectChoices = EFFECTS.map(([value, label]) => ({ name: value, displayName: label, label, value }));
-
-const voiceLabel = (id: string) => VOICES.find(([v]) => v === id)?.[1] ?? id;
-
-const voiceChoices = VOICES.map(([value, label]) => ({ name: value, displayName: label, label, value }));
+const choices = (ids: readonly string[], label: (id: string) => string) =>
+    ids.map(value => ({ name: value, displayName: label(value), label: label(value), value }));
 
 const remountMic = () => Native.setupMic(settings.store.mixRealMic, settings.store.realMic.trim())
     .catch(e => console.error("[TtsMic] setupMic", e));
 
 const settings = definePluginSettings({
+    language: {
+        type: OptionType.SELECT,
+        description: "Language / Język (menu, commands, settings)",
+        options: [
+            { label: "English", value: "en", default: true },
+            { label: "Polski", value: "pl" }
+        ],
+        onChange: () => registerCommands()
+    },
     voice: {
         type: OptionType.SELECT,
-        description: "Głos (Piper, offline)",
-        options: VOICES.map(([value, label], i) => ({ label, value, default: i === 0 })),
+        get description() { return t().settings.voice; },
+        options: VOICE_IDS.map((value, i) => ({ get label() { return voiceLabel(value); }, value, default: i === 0 })),
         onChange: () => warmup()
     },
     effect: {
         type: OptionType.SELECT,
-        description: "Efekt głosu",
-        options: EFFECTS.map(([value, label], i) => ({ label, value, default: i === 0 }))
+        get description() { return t().settings.effect; },
+        options: EFFECT_IDS.map((value, i) => ({ get label() { return effectLabel(value); }, value, default: i === 0 }))
     },
     lengthScale: {
         type: OptionType.SLIDER,
-        description: "Tempo: mniej = szybciej",
+        get description() { return t().settings.lengthScale; },
         markers: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
         stickToMarkers: false,
         default: 1
     },
     volume: {
         type: OptionType.SLIDER,
-        description: "Głośność syntezy",
+        get description() { return t().settings.volume; },
         markers: makeRange(0, 2, 0.25),
         stickToMarkers: false,
         default: 0.8
     },
     monitor: {
         type: OptionType.BOOLEAN,
-        description: "Odtwarzaj też u siebie (słyszysz, co mówi TTS)",
+        get description() { return t().settings.monitor; },
         default: true
     },
     mixRealMic: {
         type: OptionType.BOOLEAN,
-        description: "Domieszaj prawdziwy mikrofon do wirtualnego (możesz mówić normalnie i pisać)",
+        get description() { return t().settings.mixRealMic; },
         default: true,
         onChange: remountMic
     },
     realMic: {
         type: OptionType.STRING,
-        description: "Nazwa źródła PulseAudio prawdziwego mikrofonu (puste = domyślne, lista: pactl list short sources)",
+        get description() { return t().settings.realMic; },
         default: "",
         onChange: remountMic
     }
@@ -122,7 +123,8 @@ let ttsMode = false;
 const SAMPLE = "Cześć, tak brzmi ten głos. Zażółć gęślą jaźń.";
 
 function TtsMenu() {
-    const s = settings.use(["voice", "effect", "lengthScale", "volume", "monitor"]);
+    const s = settings.use(["voice", "effect", "lengthScale", "volume", "monitor", "language"]);
+    const m = t().menu;
 
     const slider = (id: string, label: string, key: "lengthScale" | "volume", min: number, max: number) => (
         <Menu.MenuControlItem
@@ -145,28 +147,28 @@ function TtsMenu() {
         <Menu.Menu
             navId="vc-tts-mic-menu"
             onClose={() => FluxDispatcher.dispatch({ type: "CONTEXT_MENU_CLOSE" })}
-            aria-label="Mikrofon TTS"
+            aria-label={m.title}
         >
-            <Menu.MenuGroup label="Głos">
-                {VOICES.map(([value, label]) => (
+            <Menu.MenuGroup label={m.voice}>
+                {VOICE_IDS.map(value => (
                     <Menu.MenuRadioItem
                         key={value}
                         id={`vc-tts-voice-${value}`}
                         group="vc-tts-voice"
-                        label={label}
+                        label={voiceLabel(value)}
                         checked={s.voice === value}
                         action={() => settings.store.voice = value}
                     />
                 ))}
             </Menu.MenuGroup>
             <Menu.MenuSeparator />
-            <Menu.MenuItem id="vc-tts-effects" label={`Efekt: ${effectLabel(s.effect)}`}>
-                {EFFECTS.map(([value, label]) => (
+            <Menu.MenuItem id="vc-tts-effects" label={`${m.effect}: ${effectLabel(s.effect)}`}>
+                {EFFECT_IDS.map(value => (
                     <Menu.MenuRadioItem
                         key={value}
                         id={`vc-tts-effect-${value}`}
                         group="vc-tts-effect"
-                        label={label}
+                        label={effectLabel(value)}
                         checked={s.effect === value}
                         action={() => settings.store.effect = value}
                     />
@@ -174,11 +176,11 @@ function TtsMenu() {
             </Menu.MenuItem>
             <Menu.MenuSeparator />
             <Menu.MenuGroup>
-                {slider("vc-tts-tempo", `Tempo (${s.lengthScale}, mniej = szybciej)`, "lengthScale", 0.5, 2)}
-                {slider("vc-tts-volume", `Głośność (${s.volume})`, "volume", 0, 2)}
+                {slider("vc-tts-tempo", `${m.tempo} (${s.lengthScale}, ${m.tempoHint})`, "lengthScale", 0.5, 2)}
+                {slider("vc-tts-volume", `${m.volume} (${s.volume})`, "volume", 0, 2)}
                 <Menu.MenuCheckboxItem
                     id="vc-tts-monitor"
-                    label="Słyszę TTS u siebie"
+                    label={m.monitor}
                     checked={s.monitor}
                     action={() => settings.store.monitor = !s.monitor}
                 />
@@ -186,12 +188,12 @@ function TtsMenu() {
             <Menu.MenuSeparator />
             <Menu.MenuItem
                 id="vc-tts-preview"
-                label="Odsłuchaj próbkę (tylko u siebie)"
+                label={m.preview}
                 action={() => Native.preview(SAMPLE, voiceOpts()).catch(e => console.error("[TtsMic] preview", e))}
             />
             <Menu.MenuItem
                 id="vc-tts-stop"
-                label="Przerwij czytanie"
+                label={m.stop}
                 color="danger"
                 action={() => Native.stopSpeaking()}
             />
@@ -211,7 +213,7 @@ const TtsToggle: ChatBarButtonFactory = ({ isMainChat }) => {
 
     return (
         <ChatBarButton
-            tooltip={enabled ? "Tryb TTS: wiadomości idą na mikrofon (PPM: głos i opcje)" : "Włącz tryb TTS (PPM: głos i opcje)"}
+            tooltip={enabled ? t().tooltipOn : t().tooltipOff}
             onClick={() => {
                 ttsMode = !enabled;
                 setEnabled(ttsMode);
@@ -224,17 +226,100 @@ const TtsToggle: ChatBarButtonFactory = ({ isMainChat }) => {
     );
 };
 
+let registered: string[] = [];
+
+function unregisterCommands() {
+    registered.forEach(name => unregisterCommand(name));
+    registered = [];
+}
+
+/** Commands are built per language, so switching it re-registers them under the new names. */
+function registerCommands() {
+    unregisterCommands();
+    const { cmd, replies: r } = t();
+    const voiceChoices = choices(VOICE_IDS, voiceLabel);
+    const effectChoices = choices(EFFECT_IDS, effectLabel);
+    const { STRING } = ApplicationCommandOptionType;
+
+    const list = [
+        {
+            ...cmd.say,
+            options: [
+                { ...cmd.text, type: STRING, required: true },
+                { ...cmd.oneOffVoice, type: STRING, choices: voiceChoices },
+                { ...cmd.oneOffEffect, type: STRING, choices: effectChoices }
+            ],
+            execute: (args, { channel }) => {
+                say(findOption(args, cmd.text.name, ""), channel.guild_id,
+                    findOption(args, cmd.oneOffVoice.name, ""), findOption(args, cmd.oneOffEffect.name, ""));
+            }
+        },
+        {
+            ...cmd.voice,
+            options: [{ ...cmd.newVoice, type: STRING, choices: voiceChoices }],
+            execute: (args, { channel }) => {
+                const voice = findOption(args, cmd.newVoice.name, "");
+                if (voice) {
+                    settings.store.voice = voice as typeof settings.store.voice;
+                    warmup();
+                }
+                sendBotMessage(channel.id, {
+                    content: `${voice ? r.voiceSet : r.voiceCurrent}: **${voiceLabel(settings.store.voice)}**\n${r.available}: ${VOICE_IDS.map(voiceLabel).join(", ")}`
+                });
+            }
+        },
+        {
+            ...cmd.effect,
+            options: [{ ...cmd.newEffect, type: STRING, choices: effectChoices }],
+            execute: (args, { channel }) => {
+                const effect = findOption(args, cmd.newEffect.name, "");
+                if (effect) {
+                    settings.store.effect = effect as typeof settings.store.effect;
+                    warmup();
+                }
+                sendBotMessage(channel.id, {
+                    content: `${effect ? r.effectSet : r.effectCurrent}: **${effectLabel(settings.store.effect)}**\n${r.available}: ${EFFECT_IDS.map(effectLabel).join(", ")}`
+                });
+            }
+        },
+        {
+            ...cmd.tempo,
+            options: [{ ...cmd.tempoValue, type: ApplicationCommandOptionType.NUMBER, required: true }],
+            execute: (args, { channel }) => {
+                const value = Math.min(2, Math.max(0.5, Number(findOption(args, cmd.tempoValue.name, 1))));
+                settings.store.lengthScale = value;
+                warmup();
+                sendBotMessage(channel.id, { content: `${r.tempo}: **${value}**` });
+            }
+        },
+        {
+            ...cmd.stop,
+            execute: (_, { channel }) => {
+                Native.stopSpeaking();
+                sendBotMessage(channel.id, { content: r.stopped });
+            }
+        }
+    ] satisfies Omit<Parameters<typeof registerCommand>[0], "inputType">[];
+
+    for (const command of list) {
+        registerCommand({ ...command, inputType: ApplicationCommandInputType.BUILT_IN }, "TtsMic");
+        registered.push(command.name);
+    }
+}
+
 export default definePlugin({
     name: "TtsMic",
-    description: "Wirtualny mikrofon czytający wpisany tekst polskim głosem (Piper). W Discordzie wybierz wejście „Mikrofon TTS (Vencord)”.",
+    description: "Virtual microphone that speaks what you type with a Polish neural voice (Piper). In Discord, pick the input device \"Mikrofon TTS (Vencord)\".",
     authors: [{ name: "srb", id: 0n }],
     settings,
 
     start() {
         remountMic();
+        registerCommands();
     },
 
     stop() {
+        unregisterCommands();
         ttsMode = false;
         Native.teardownMic().catch(() => { });
     },
@@ -248,104 +333,5 @@ export default definePlugin({
         if (!ttsMode || !msg.content.trim()) return;
         say(msg.content, ChannelStore.getChannel(channelId)?.guild_id);
         return { cancel: true };
-    },
-
-    commands: [
-        {
-            name: "powiedz",
-            description: "Przeczytaj tekst na mikrofonie TTS",
-            inputType: ApplicationCommandInputType.BUILT_IN,
-            options: [
-                {
-                    name: "tekst",
-                    description: "Tekst do przeczytania",
-                    type: ApplicationCommandOptionType.STRING,
-                    required: true
-                },
-                {
-                    name: "glos",
-                    description: "Jednorazowo innym głosem",
-                    type: ApplicationCommandOptionType.STRING,
-                    choices: voiceChoices
-                },
-                {
-                    name: "efekt",
-                    description: "Jednorazowo z innym efektem",
-                    type: ApplicationCommandOptionType.STRING,
-                    choices: effectChoices
-                }
-            ],
-            execute: (args, { channel }) => {
-                say(findOption(args, "tekst", ""), channel.guild_id, findOption(args, "glos", ""), findOption(args, "efekt", ""));
-            }
-        },
-        {
-            name: "efekt",
-            description: "Zmień efekt głosu TTS (bez argumentu: pokaż aktualny)",
-            inputType: ApplicationCommandInputType.BUILT_IN,
-            options: [{
-                name: "efekt",
-                description: "Nowy efekt",
-                type: ApplicationCommandOptionType.STRING,
-                choices: effectChoices
-            }],
-            execute: (args, { channel }) => {
-                const effect = findOption(args, "efekt", "");
-                if (effect) {
-                    settings.store.effect = effect as typeof settings.store.effect;
-                    warmup();
-                }
-                sendBotMessage(channel.id, {
-                    content: `${effect ? "Efekt ustawiony" : "Aktualny efekt"}: **${effectLabel(settings.store.effect)}**\nDostępne: ${EFFECTS.map(([, l]) => l).join(", ")}`
-                });
-            }
-        },
-        {
-            name: "glos",
-            description: "Zmień głos TTS (bez argumentu: pokaż aktualny)",
-            inputType: ApplicationCommandInputType.BUILT_IN,
-            options: [{
-                name: "glos",
-                description: "Nowy głos",
-                type: ApplicationCommandOptionType.STRING,
-                choices: voiceChoices
-            }],
-            execute: (args, { channel }) => {
-                const voice = findOption(args, "glos", "");
-                if (voice) {
-                    settings.store.voice = voice as typeof settings.store.voice;
-                    warmup();
-                }
-                sendBotMessage(channel.id, {
-                    content: `${voice ? "Głos ustawiony" : "Aktualny głos"}: **${voiceLabel(settings.store.voice)}**\nDostępne: ${VOICES.map(([, l]) => l).join(", ")}`
-                });
-            }
-        },
-        {
-            name: "tempo",
-            description: "Zmień tempo TTS (0.5–2, mniej = szybciej)",
-            inputType: ApplicationCommandInputType.BUILT_IN,
-            options: [{
-                name: "wartosc",
-                description: "Np. 0.8 szybciej, 1.2 wolniej",
-                type: ApplicationCommandOptionType.NUMBER,
-                required: true
-            }],
-            execute: (args, { channel }) => {
-                const value = Math.min(2, Math.max(0.5, Number(findOption(args, "wartosc", 1))));
-                settings.store.lengthScale = value;
-                warmup();
-                sendBotMessage(channel.id, { content: `Tempo: **${value}**` });
-            }
-        },
-        {
-            name: "cisza",
-            description: "Przerwij czytanie i wyczyść kolejkę TTS",
-            inputType: ApplicationCommandInputType.BUILT_IN,
-            execute: (_, { channel }) => {
-                Native.stopSpeaking();
-                sendBotMessage(channel.id, { content: "TTS przerwany." });
-            }
-        }
-    ]
+    }
 });
