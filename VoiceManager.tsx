@@ -7,7 +7,7 @@
 import { Button } from "@components/Button";
 import { PluginNative } from "@utils/types";
 import { RenderModalProps } from "@vencord/discord-types";
-import { Forms, Modal, openModal, showToast, Toasts, useEffect, useState } from "@webpack/common";
+import { Forms, Modal, openModal, showToast, useEffect, useState } from "@webpack/common";
 
 import { Strings } from "./i18n";
 import { MODEL_SIZE_MB, modelOf, VoiceLang,VOICES } from "./voices";
@@ -52,7 +52,7 @@ function VoiceManager({ rootProps, ctx }: { rootProps: RenderModalProps; ctx: Ma
     const m = ctx.strings().manager;
     const { langNames } = ctx.strings().menu;
 
-    const fail = (e: unknown) => showToast(`${m.error}: ${(e as Error)?.message ?? e}`, Toasts.Type.FAILURE);
+    const fail = (e: unknown) => showToast(`${m.error}: ${(e as Error)?.message ?? e}`, "failure");
 
     const installedModels = new Set(status?.installed ?? []);
     const installedMB = [...installedModels].reduce((sum, model) => sum + (MODEL_SIZE_MB[model] ?? 0), 0);

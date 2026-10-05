@@ -9,7 +9,7 @@ import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, 
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
 import definePlugin, { IconComponent, makeRange, OptionType, PluginNative } from "@utils/types";
-import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, showToast, Toasts, UserStore, useState } from "@webpack/common";
+import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, showToast, UserStore, useState } from "@webpack/common";
 
 import { EFFECT_IDS, Lang, STRINGS } from "./i18n";
 import { openVoiceManager } from "./VoiceManager";
@@ -179,7 +179,7 @@ async function say(text: string, guildId?: string | null, voice?: string, effect
         await Native.speak(toSpeech(text, words, guildId), opts);
     } catch (e) {
         console.error("[TtsMic] speak", e);
-        showToast(`${t().manager.error}: ${(e as Error)?.message ?? e}`, Toasts.Type.FAILURE);
+        showToast(`${t().manager.error}: ${(e as Error)?.message ?? e}`, "failure");
     }
 }
 
@@ -287,7 +287,7 @@ const TtsToggle: ChatBarButtonFactory = ({ isMainChat }) => {
             tooltip={enabled ? t().tooltipOn : t().tooltipOff}
             onClick={() => {
                 if (!enabled && !hasVoices()) {
-                    showToast(t().manager.noVoice, Toasts.Type.MESSAGE);
+                    showToast(t().manager.noVoice, "message");
                     return openManager();
                 }
                 ttsMode = !enabled;
