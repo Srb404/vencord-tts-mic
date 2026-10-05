@@ -139,7 +139,7 @@ Everything lives in `~/.local/share/vencord-tts`. If you prefer the terminal, `s
 | Volume | 0.8 | Above 1 may clip |
 | Monitor | on | Also play the speech on your default output |
 | Mix real mic | on | Loop your real mic into the virtual one |
-| Real mic source | default source | A PulseAudio source name from `pactl list short sources` |
+| Real mic source | system default | Picked from a list of your capture devices |
 
 ## Troubleshooting
 

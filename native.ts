@@ -109,6 +109,18 @@ export function setupMic(_: IpcMainInvokeEvent, mixRealMic: boolean, realMic: st
     });
 }
 
+/** Capture devices for the real-mic picker; monitors of outputs and our own virtual mic are left out. */
+export async function listSources() {
+    // LC_ALL=C keeps the field labels in English; pactl's JSON mode mangles non-ASCII descriptions
+    const { stdout } = await run("pactl", ["list", "sources"], { env: { ...process.env, LC_ALL: "C" } });
+    const field = (block: string, label: string) => block.match(new RegExp(`^\\s*${label}: (.+)$`, "m"))?.[1].trim();
+    return stdout.split(/^Source #/m).slice(1)
+        .filter(block => field(block, "Monitor of Sink") === "n/a")
+        .map(block => ({ name: field(block, "Name") ?? "", description: field(block, "Description") }))
+        .filter(s => s.name && !s.name.startsWith("vc_tts_"))
+        .map(s => ({ name: s.name, label: s.description || s.name }));
+}
+
 export function teardownMic() {
     killPipeline();
     stopSample();

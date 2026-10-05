@@ -27,7 +27,9 @@ const en = {
         volume: "Speech volume",
         monitor: "Also play locally (hear what the TTS says)",
         mixRealMic: "Mix your real microphone into the virtual one (talk and type at the same time)",
-        realMic: "PulseAudio source name of your real microphone (empty = default, list: pactl list short sources)"
+        realMic: "Your real microphone (the one mixed into the virtual one)",
+        realMicDefault: "System default",
+        realMicMissing: "not connected"
     },
 
     menu: {
@@ -114,7 +116,9 @@ const pl: Strings = {
         volume: "Głośność syntezy",
         monitor: "Odtwarzaj też u siebie (słyszysz, co mówi TTS)",
         mixRealMic: "Domieszaj prawdziwy mikrofon do wirtualnego (możesz mówić normalnie i pisać)",
-        realMic: "Nazwa źródła PulseAudio prawdziwego mikrofonu (puste = domyślne, lista: pactl list short sources)"
+        realMic: "Twój prawdziwy mikrofon (ten domieszywany do wirtualnego)",
+        realMicDefault: "Domyślny systemowy",
+        realMicMissing: "niepodłączony"
     },
 
     menu: {

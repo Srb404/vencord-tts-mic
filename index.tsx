@@ -8,8 +8,9 @@ import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { ApplicationCommandInputType, ApplicationCommandOptionType, findOption, registerCommand, sendBotMessage, unregisterCommand } from "@api/Commands";
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
-import definePlugin, { IconComponent, makeRange, OptionType, PluginNative } from "@utils/types";
-import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, showToast, UserStore, useState } from "@webpack/common";
+import { SettingsSection } from "@components/settings/tabs/plugins/components/Common";
+import definePlugin, { IconComponent, makeRange, OptionType, PluginNative, PluginSettingComponentProps } from "@utils/types";
+import { ChannelStore, ContextMenuApi, FluxDispatcher, GuildMemberStore, Menu, Select, showToast, useEffect, UserStore, useState } from "@webpack/common";
 
 import { EFFECT_IDS, Lang, STRINGS } from "./i18n";
 import { openVoiceManager } from "./VoiceManager";
@@ -124,9 +125,9 @@ const settings = definePluginSettings({
         onChange: remountMic
     },
     realMic: {
-        type: OptionType.STRING,
-        get description() { return t().settings.realMic; },
+        type: OptionType.COMPONENT,
         default: "",
+        component: props => <RealMicPicker {...props} />,
         onChange: remountMic
     },
     voiceManager: {
@@ -134,6 +135,42 @@ const settings = definePluginSettings({
         component: () => <Button onClick={openManager}>{t().manager.openButton}</Button>
     }
 });
+
+/** Picks the real mic from the capture devices PulseAudio knows, so there is no source name to mistype. */
+function RealMicPicker({ setValue }: PluginSettingComponentProps) {
+    const { realMic, mixRealMic } = settings.use(["realMic", "mixRealMic"]);
+    const [sources, setSources] = useState<{ name: string; label: string; }[] | null>(null);
+    const s = t().settings;
+
+    useEffect(() => {
+        Native.listSources().then(setSources).catch(e => {
+            console.error("[TtsMic] listSources", e);
+            setSources([]);
+        });
+    }, []);
+
+    const options = [
+        { label: s.realMicDefault, value: "" },
+        ...(sources ?? []).map(src => ({ label: src.label, value: src.name }))
+    ];
+    // a saved mic that is unplugged right now stays listed, rather than looking like the default
+    if (sources && realMic && !sources.some(src => src.name === realMic))
+        options.push({ label: `${realMic} (${s.realMicMissing})`, value: realMic });
+
+    return (
+        <SettingsSection id="realMic" description={s.realMic}>
+            <Select
+                options={options}
+                maxVisibleItems={5}
+                closeOnSelect={true}
+                select={setValue}
+                isSelected={v => v === realMic}
+                serialize={v => String(v)}
+                isDisabled={!mixRealMic || !sources}
+            />
+        </SettingsSection>
+    );
+}
 
 function openManager() {
     openVoiceManager({
