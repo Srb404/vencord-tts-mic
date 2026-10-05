@@ -10,7 +10,7 @@ import { RenderModalProps } from "@vencord/discord-types";
 import { Forms, Modal, openModal, showToast, useEffect, useState } from "@webpack/common";
 
 import { Strings } from "./i18n";
-import { MODEL_SIZE_MB, modelOf, VoiceLang,VOICES } from "./voices";
+import { MODEL_SIZE_MB, modelOf, VoiceLang, VOICES } from "./voices";
 
 const Native = VencordNative.pluginHelpers.TtsMic as PluginNative<typeof import("./native")>;
 
@@ -58,7 +58,8 @@ function VoiceManager({ rootProps, ctx }: { rootProps: RenderModalProps; ctx: Ma
     const installedMB = [...installedModels].reduce((sum, model) => sum + (MODEL_SIZE_MB[model] ?? 0), 0);
 
     const download = (model: string) => Native.downloadVoice(model)
-        .then(() => {
+        .then(done => {
+            if (!done) return;
             ctx.onChanged();
             // first voice ever, or the current one isn't on disk: switch to what was just downloaded
             if (!installedModels.has(modelOf(ctx.currentVoice()))) ctx.setVoice(VOICES.find(v => modelOf(v.id) === model)!.id);

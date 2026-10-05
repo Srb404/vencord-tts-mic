@@ -48,13 +48,23 @@ const EFFECTS: Record<string, string[]> = {
 
 const rawFormat = (rate: number) => ["-t", "raw", "-r", String(rate), "-e", "signed", "-b", "16", "-c", "1"];
 
+const effectArgs = (id: string) => Object.hasOwn(EFFECTS, id) ? EFFECTS[id] : [];
+
 let previewPlayer: ChildProcessWithoutNullStreams | null = null;
 
-let pipeline: {
+/** Long-lived piper process; reloading a model takes a while, so it only restarts when voice or tempo change. */
+let synth: {
     key: string;
+    voice: string;
+    rate: number;
     piper: ChildProcessWithoutNullStreams;
-    sox: ChildProcessWithoutNullStreams | null;
-    players: ChildProcessWithoutNullStreams[];
+} | null = null;
+
+/** sox (if an effect is on) + pw-play streams; cheap to rebuild, so volume, monitor and effect live here. */
+let output: {
+    key: string;
+    write: (chunk: Buffer) => void;
+    kill: () => void;
 } | null = null;
 
 async function pactl(...args: string[]) {
@@ -71,48 +81,77 @@ async function unloadOurModules() {
     for (const id of ids) await pactl("unload-module", id).catch(() => { });
 }
 
-/** Virtual mic = monitor of a null sink, fed by the TTS player and optionally a loopback of the real mic. */
-export async function setupMic(_: IpcMainInvokeEvent, mixRealMic: boolean, realMic: string) {
-    await unloadOurModules();
-
-    // pipewire-pulse splits on spaces unless the whole property list is single-quoted
-    await pactl("load-module", "module-null-sink", `sink_name=${MIX_SINK}`,
-        "sink_properties='device.description=\"TTS Mix (Vencord)\"'");
-    await pactl("load-module", "module-remap-source", `master=${MIX_SINK}.monitor`, `source_name=${MIC_SOURCE}`,
-        "source_properties='device.description=\"TTS Microphone (Vencord)\"'");
-
-    if (mixRealMic) {
-        const source = realMic || await pactl("get-default-source");
-        if (!source.startsWith("vc_tts_"))
-            await pactl("load-module", "module-loopback", `source=${source}`, `sink=${MIX_SINK}`,
-                "latency_msec=20", "source_dont_move=true", "sink_dont_move=true");
-    }
+/** pactl calls must not interleave, or two setups at once load duplicate sinks. */
+let micQueue: Promise<unknown> = Promise.resolve();
+function serialized<T>(task: () => Promise<T>) {
+    const result = micQueue.then(task);
+    micQueue = result.catch(() => { });
+    return result;
 }
 
-export async function teardownMic() {
+/** Virtual mic = monitor of a null sink, fed by the TTS player and optionally a loopback of the real mic. */
+export function setupMic(_: IpcMainInvokeEvent, mixRealMic: boolean, realMic: string) {
+    return serialized(async () => {
+        await unloadOurModules();
+
+        // pipewire-pulse splits on spaces unless the whole property list is single-quoted
+        await pactl("load-module", "module-null-sink", `sink_name=${MIX_SINK}`,
+            "sink_properties='device.description=\"TTS Mix (Vencord)\"'");
+        await pactl("load-module", "module-remap-source", `master=${MIX_SINK}.monitor`, `source_name=${MIC_SOURCE}`,
+            "source_properties='device.description=\"TTS Microphone (Vencord)\"'");
+
+        if (mixRealMic) {
+            const source = realMic || await pactl("get-default-source");
+            if (!source.startsWith("vc_tts_"))
+                await pactl("load-module", "module-loopback", `source=${source}`, `sink=${MIX_SINK}`,
+                    "latency_msec=20", "source_dont_move=true", "sink_dont_move=true");
+        }
+    });
+}
+
+export function teardownMic() {
     killPipeline();
-    await unloadOurModules();
+    stopSample();
+    return serialized(unloadOurModules);
+}
+
+function killSynth() {
+    const old = synth;
+    synth = null;
+    old?.piper.kill("SIGKILL");
+}
+
+function killOutput() {
+    const old = output;
+    output = null;
+    old?.kill();
 }
 
 function killPipeline() {
-    if (!pipeline) return;
-    pipeline.piper.kill("SIGKILL");
-    pipeline.sox?.kill("SIGKILL");
-    // pw-play ignores SIGTERM while streaming
-    pipeline.players.forEach(p => p.kill("SIGKILL"));
-    pipeline = null;
+    killSynth();
+    killOutput();
+}
+
+/** Logs spawn errors and swallows EPIPE, so a dead child never throws in the main process. */
+function guard(p: ChildProcessWithoutNullStreams) {
+    p.on("error", e => console.error("[TtsMic]", e));
+    p.stdin.on("error", () => { });
+    p.stderr.on("data", () => { });
+    return p;
 }
 
 function player(target: string | null, volume: number, rate: number) {
     const args = ["--raw", "--format", "s16", "--rate", String(rate), "--channels", "1", "--volume", String(volume)];
     if (target) args.push("--target", target);
     args.push("-");
-    return spawn("pw-play", args);
+    return guard(spawn("pw-play", args));
 }
 
 /** Voice id = model name, optionally `#<speaker id>` for multi-speaker models. */
 function piperArgs(voice: string) {
     const [name, speaker] = voice.split("#");
+    assertKnownModel(name);
+    if (speaker !== undefined && !/^\d+$/.test(speaker)) throw new Error(`bad speaker: ${speaker}`);
     const model = join(VOICES_DIR, `${name}.onnx`);
     if (!existsSync(PIPER)) throw new Error(`piper not found: ${PIPER} (run setup.sh)`);
     if (!existsSync(model)) throw new Error(`voice not installed: ${model} (run setup.sh)`);
@@ -124,52 +163,73 @@ export function listVoices() {
     return readdirSync(VOICES_DIR).filter(f => f.endsWith(".onnx")).map(f => f.slice(0, -".onnx".length));
 }
 
-/** Long-lived piper process: one line of stdin = one utterance, raw PCM streamed straight into pw-play. */
-function getPipeline(opts: VoiceOptions) {
-    const key = JSON.stringify(opts);
-    if (pipeline?.key === key && pipeline.piper.exitCode === null) return pipeline;
-    killPipeline();
+/** One line of stdin = one utterance, raw PCM streamed to whatever output is current. */
+function getSynth(opts: VoiceOptions) {
+    const key = JSON.stringify([opts.voice, opts.lengthScale]);
+    if (synth?.key === key) return synth;
+    killSynth();
 
     const { model, args } = piperArgs(opts.voice);
-
     // voices differ in sample rate (mls is 16 kHz, the rest 22.05 kHz)
     const rate: number = JSON.parse(readFileSync(model + ".json", "utf8")).audio.sample_rate;
 
-    const piper = spawn(PIPER, [...args, "--output-raw", "--length-scale", String(opts.lengthScale)]);
+    const piper = guard(spawn(PIPER, [...args, "--output-raw", "--length-scale", String(opts.lengthScale)]));
+    const self = { key, voice: opts.voice, rate, piper };
+    piper.stdout.on("data", (chunk: Buffer) => output?.write(chunk));
+    // killed from outside (OOM, crash): forget it, so the next speak() respawns instead of writing into the void
+    piper.on("exit", () => synth === self && (synth = null));
+    return synth = self;
+}
+
+function getOutput(opts: VoiceOptions, rate: number) {
+    const key = JSON.stringify([opts.effect, opts.volume, opts.monitor, rate]);
+    if (output?.key === key) return output;
+
+    const effect = effectArgs(opts.effect);
+    if (effect.length && !hasSox()) throw new Error("sox not found (needed for voice effects)");
+    killOutput();
+
     const players = [player(MIX_SINK, opts.volume, rate)];
     if (opts.monitor) players.push(player(null, opts.volume, rate));
-
     const toPlayers = (chunk: Buffer) => players.forEach(p => p.stdin.writable && p.stdin.write(chunk));
 
-    const effect = EFFECTS[opts.effect] ?? [];
     let sox: ChildProcessWithoutNullStreams | null = null;
+    let idle: ReturnType<typeof setTimeout> | undefined;
+    let write = toPlayers;
+
     if (effect.length) {
-        if (!hasSox()) throw new Error("sox not found (needed for voice effects)");
-        sox = spawn("sox", ["-q", "--buffer", "2048", ...rawFormat(rate), "-", ...rawFormat(rate), "-", ...effect]);
-        sox.stdout.on("data", toPlayers);
-        sox.stderr.on("data", () => { });
+        const fx = sox = guard(spawn("sox", ["-q", "--buffer", "2048", ...rawFormat(rate), "-", ...rawFormat(rate), "-", ...effect]));
+        fx.stdout.on("data", toPlayers);
 
         // sox holds the tail of each utterance in its buffers until more input arrives,
         // so once piper goes quiet push some silence through to flush it (also lets reverb ring out)
         const padding = Buffer.alloc(Math.round(rate * 2 * 0.6));
-        let idle: ReturnType<typeof setTimeout> | undefined;
-        piper.stdout.on("data", chunk => {
-            sox!.stdin.writable && sox!.stdin.write(chunk);
+        write = chunk => {
+            fx.stdin.writable && fx.stdin.write(chunk);
             clearTimeout(idle);
-            idle = setTimeout(() => sox!.stdin.writable && sox!.stdin.write(padding), 80);
-        });
-    } else {
-        piper.stdout.on("data", toPlayers);
+            idle = setTimeout(() => fx.stdin.writable && fx.stdin.write(padding), 80);
+        };
     }
 
-    piper.stderr.on("data", () => { });
-    for (const p of [piper, ...(sox ? [sox] : []), ...players]) {
-        p.on("error", e => console.error("[TtsMic]", e));
-        p.stdin.on("error", () => { });
-    }
+    const procs = [...(sox ? [sox] : []), ...players];
+    const self = {
+        key,
+        write,
+        kill() {
+            clearTimeout(idle);
+            // pw-play ignores SIGTERM while streaming
+            procs.forEach(p => p.kill("SIGKILL"));
+        }
+    };
+    // one dead link (e.g. PipeWire restarted) breaks the chain, so rebuild all of it on the next speak()
+    for (const p of procs) p.on("exit", () => output === self && killOutput());
+    return output = self;
+}
 
-    pipeline = { key, piper, sox, players };
-    return pipeline;
+function getPipeline(opts: VoiceOptions) {
+    const s = getSynth(opts);
+    getOutput(opts, s.rate);
+    return s;
 }
 
 export function speak(_: IpcMainInvokeEvent, text: string, opts: VoiceOptions) {
@@ -187,7 +247,6 @@ export function warmup(_: IpcMainInvokeEvent, opts: VoiceOptions) {
     getPipeline(opts);
 }
 
-
 /** Local-only sample: rendered to a wav and played on the default output, never on the virtual mic. */
 export async function preview(_: IpcMainInvokeEvent, text: string, opts: VoiceOptions) {
     const wav = join(tmpdir(), "vc-tts-preview.wav");
@@ -197,20 +256,19 @@ export async function preview(_: IpcMainInvokeEvent, text: string, opts: VoiceOp
         p.on("close", code => code === 0 ? resolve() : reject(new Error(`piper: ${code}`)));
         p.stdin.end(text);
     });
-    const effect = EFFECTS[opts.effect] ?? [];
+    const effect = effectArgs(opts.effect);
     let file = wav;
     if (effect.length) {
         if (!hasSox()) throw new Error("sox not found (needed for voice effects)");
         file = join(tmpdir(), "vc-tts-preview-fx.wav");
         await run("sox", [wav, file, ...effect]);
     }
-    stopSample();
-    previewPlayer = spawn("pw-play", ["--volume", String(opts.volume), file]);
+    playLocal(file, opts.volume);
 }
 
 // ---- voice manager ----
 
-/** Only models from voices.ts may be downloaded or deleted, so a renderer can't point this at arbitrary paths. */
+/** Only models from voices.ts may be used, downloaded or deleted, so a renderer can't point this at arbitrary paths. */
 function assertKnownModel(model: string) {
     if (!VOICES.some(v => modelOf(v.id) === model)) throw new Error(`unknown voice: ${model}`);
 }
@@ -246,7 +304,7 @@ async function fetchTo(url: string, dest: string, signal?: AbortSignal, onProgre
     }
 }
 
-const downloads = new Map<string, { progress: number; abort: AbortController; }>();
+const downloads = new Map<string, { progress: number; abort: AbortController; done: Promise<boolean>; }>();
 let engineInstall: { running: boolean; error: string | null; } = { running: false, error: null };
 
 const hasSox = () => (process.env.PATH ?? "").split(delimiter).some(dir => dir && existsSync(join(dir, "sox")));
@@ -262,25 +320,30 @@ export function getStatus() {
     };
 }
 
-export async function downloadVoice(_: IpcMainInvokeEvent, model: string) {
+/** Resolves to true once the voice is on disk, false if the download was cancelled; a second call joins the running one. */
+export function downloadVoice(_: IpcMainInvokeEvent, model: string) {
     assertKnownModel(model);
-    if (downloads.has(model)) return;
+    const running = downloads.get(model);
+    if (running) return running.done;
 
-    const abort = new AbortController();
-    const entry = { progress: 0, abort };
+    const entry = { progress: 0, abort: new AbortController(), done: Promise.resolve(false) };
     downloads.set(model, entry);
-    mkdirSync(VOICES_DIR, { recursive: true });
+    entry.done = fetchVoice(model, entry).finally(() => downloads.delete(model));
+    return entry.done;
+}
 
+async function fetchVoice(model: string, entry: { progress: number; abort: AbortController; }) {
+    mkdirSync(VOICES_DIR, { recursive: true });
     const base = `${HF}/${repoPath(model)}/${model}`;
     const config = join(VOICES_DIR, `${model}.onnx.json`);
     try {
-        await fetchTo(`${base}.onnx.json`, config, abort.signal);
-        await fetchTo(`${base}.onnx`, join(VOICES_DIR, `${model}.onnx`), abort.signal, p => entry.progress = p);
+        await fetchTo(`${base}.onnx.json`, config, entry.abort.signal);
+        await fetchTo(`${base}.onnx`, join(VOICES_DIR, `${model}.onnx`), entry.abort.signal, p => entry.progress = p);
+        return true;
     } catch (e) {
         rmSync(config, { force: true });
-        if (!abort.signal.aborted) throw e;
-    } finally {
-        downloads.delete(model);
+        if (entry.abort.signal.aborted) return false;
+        throw e;
     }
 }
 
@@ -290,7 +353,7 @@ export function cancelDownload(_: IpcMainInvokeEvent, model: string) {
 
 export function deleteVoice(_: IpcMainInvokeEvent, model: string) {
     assertKnownModel(model);
-    if (pipeline && modelOf(JSON.parse(pipeline.key).voice) === model) killPipeline();
+    if (synth && modelOf(synth.voice) === model) killSynth();
     rmSync(join(VOICES_DIR, `${model}.onnx`), { force: true });
     rmSync(join(VOICES_DIR, `${model}.onnx.json`), { force: true });
 }
@@ -306,8 +369,12 @@ export async function playSample(_: IpcMainInvokeEvent, voice: string, volume: n
         mkdirSync(SAMPLES_DIR, { recursive: true });
         await fetchTo(`${SAMPLES_URL}/${repoPath(model)}/speaker_${speaker}.mp3`, file);
     }
+    playLocal(file, volume);
+}
+
+function playLocal(file: string, volume: number) {
     stopSample();
-    previewPlayer = spawn("pw-play", ["--volume", String(volume), file]);
+    previewPlayer = guard(spawn("pw-play", ["--volume", String(volume), file]));
 }
 
 export function stopSample() {
