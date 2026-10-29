@@ -216,7 +216,7 @@ async function say(text: string, guildId?: string | null, voice?: string, effect
         await Native.speak(toSpeech(text, words, guildId), opts);
     } catch (e) {
         console.error("[TtsMic] speak", e);
-        showToast(`${t().manager.error}: ${(e as Error)?.message ?? e}`, "failure");
+        showToast({ text: `${t().manager.error}: ${(e as Error)?.message ?? e}`, variant: "critical" });
     }
 }
 
@@ -324,7 +324,7 @@ const TtsToggle: ChatBarButtonFactory = ({ isMainChat }) => {
             tooltip={enabled ? t().tooltipOn : t().tooltipOff}
             onClick={() => {
                 if (!enabled && !hasVoices()) {
-                    showToast(t().manager.noVoice, "message");
+                    showToast({ text: t().manager.noVoice });
                     return openManager();
                 }
                 ttsMode = !enabled;

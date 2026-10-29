@@ -53,7 +53,7 @@ function VoiceManager({ rootProps, ctx }: { rootProps: RenderModalProps; ctx: Ma
     const m = ctx.strings().manager;
     const { langNames } = ctx.strings().menu;
 
-    const fail = (e: unknown) => showToast(`${m.error}: ${(e as Error)?.message ?? e}`, "failure");
+    const fail = (e: unknown) => showToast({ text: `${m.error}: ${(e as Error)?.message ?? e}`, variant: "critical" });
 
     const installedModels = new Set(status?.installed ?? []);
     const installedMB = [...installedModels].reduce((sum, model) => sum + (MODEL_SIZE_MB[model] ?? 0), 0);
