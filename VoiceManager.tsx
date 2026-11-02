@@ -5,7 +5,7 @@
  */
 
 import { Button } from "@components/Button";
-import { HeadingSecondary } from "@components/Heading";
+import { Heading } from "@components/Heading";
 import { PluginNative } from "@utils/types";
 import { RenderModalProps } from "@vencord/discord-types";
 import { Modal, openModal, showToast, useEffect, useState } from "@webpack/common";
@@ -137,7 +137,7 @@ function VoiceManager({ rootProps, ctx }: { rootProps: RenderModalProps; ctx: Ma
 
             {(["pl", "en"] as VoiceLang[]).map(l => (
                 <section key={l} style={{ marginTop: 16 }}>
-                    <HeadingSecondary>{langNames[l]}</HeadingSecondary>
+                    <Heading tag="h3">{langNames[l]}</Heading>
                     {VOICES.filter(v => v.lang === l).map(v => voiceRow(v.id, v.label[ctx.lang()]))}
                 </section>
             ))}
